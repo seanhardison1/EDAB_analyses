@@ -32,13 +32,14 @@ anova(update(constant, method = "ML"),
 anova(update(constant, method = "ML"),
       update(fall_mod, method = "ML"))
 anova(update(fall_mod_linear, method = "ML"),
-      update(fall_mod, method = "ML"))
+      update(fall_mod, method = "ML")) #linear model is 
+
 #Best model is linear
 
 #Plot relationship 
 g <- ggplot(data = pd_f, aes(y = scallop_f, x = lobster_f)) + geom_point(col = 'blue',size = 2)
-g + geom_abline(slope = fall_mod$coefficients[2],
-                intercept = fall_mod$coefficients[1], col = 'red') +
+g + geom_abline(slope = fall_mod_linear$coefficients[2],
+                intercept = fall_mod_linear$coefficients[1], col = 'red') +
   labs(x = expression(paste("Lobster Biomass (kg tow"^"-1",")")),
        y = expression(paste("Scallop Biomass (kg tow"^"-1",")"))) +
   theme(axis.text=element_text(size=20),
