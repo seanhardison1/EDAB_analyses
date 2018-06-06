@@ -98,8 +98,7 @@ for (epu in c("GOM","GB","MAB")){
                                  
                                  model = c("linear_mod", "linear_mod_ar",
                                            "quad_mod","quad_mod_ar"))
-        best <- aic_result %>% dplyr::filter(!is.na(aicc),
-                                             aicc == min(aicc))
+
         best <- aic_result %>% filter(!is.na(aicc))
         best <- best  %>% filter(aicc == min(aicc))
         
