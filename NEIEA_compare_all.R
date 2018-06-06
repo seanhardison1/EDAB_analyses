@@ -4,21 +4,23 @@ library(dplyr)
 library(nlme)
 library(pracma)
 library(AICcmodavg)
-rm(list = ls())
+#rm(list = ls())
 
 #Working directory - EcoAp
 setwd('z:/shardison/neiea')
 load("Surv_biomass_by_species.Rdata")
 species <- na.omit(unique(survey_biomass$comname))
-corr_results <- NULL
+corr_results_spring <- NULL
+corr_results_fall <- NULL
+
 
 for (epu in c("GOM","GB","MAB")){
   
-  survey <- filter(survey_biomass,EPU == epu)
+  survey_epu <- filter(survey_biomass,EPU == epu)
   
-  for (seas in c("spring","fall")){
+  for (seas in c("fall","spring")){
     
-    survey <- filter(survey, season == seas, !is.na(comname))
+    survey <- filter(survey_epu, season == seas, !is.na(comname))
     
     for (i in 1:length(species)){
       
@@ -27,38 +29,41 @@ for (epu in c("GOM","GB","MAB")){
       time <- as.numeric(na.omit(survey[survey$comname == species[i],]$YEAR))
       ind_df <- data.frame(ind = ind,
                            time = time)
-      if (length(ind) < 20){
+      if (nrow(ind_df) < 20){
         next
       }
     
       for (j in 1:length(species)){
         
         #-----------------Get response variable--------------------------# 
-        
-        if (species[j]==species[i] | length(resp) < 20){ #Exclude data < 20 years
+        resp <- as.numeric(na.omit(survey[survey$comname == species[j],]$kg.per.tow))
+        if (species[j]==species[i]){ #Exclude data < 20 years
           next
         }
-        resp <- as.numeric(na.omit(survey[survey$comname == species[j],]$kg.per.tow))
         time <- as.numeric(na.omit(survey[survey$comname == species[j],]$YEAR))
         resp_df <- data.frame(resp = resp,
                               time = time)
-        
+
         #-----------------Merge predictor and response variable data by year--------------------------# 
         model_df <- merge(ind_df, resp_df, by = "time")
+        if(nrow(model_df)<20){
+          next
+        }
         model_df$ind <- detrend(model_df$ind)
         model_df$resp <- detrend(model_df$resp)
-       
+
+        
         #----------------------Build models--------------------------# 
         constant <- gls(resp ~ 1, data = model_df) #null model for comparison
         
         linear_mod <- tryCatch(gls(resp ~ ind, #first order linear
                               data = model_df),
-        error = function(e)NA)
+                              error = function(e)NA)
         
         linear_mod_ar <- tryCatch(gls(resp ~ ind, 
                                   data = model_df,
                                   correlation = corAR1()),
-        error = function(e)NA) #including autocorrelated error structure
+                                  error = function(e)NA) #including autocorrelated error structure
         
         model_df$ind2 <- model_df$ind^2
         
@@ -117,7 +122,7 @@ for (epu in c("GOM","GB","MAB")){
                              epu = epu,
                              n = length(model_df$time))
         
-        assign("corr_results",rbind(corr_results, result))
+        assign(paste0("corr_results_",seas),rbind(get(paste0("corr_results_",seas)), result))
         
       }
     }
