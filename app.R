@@ -13,9 +13,8 @@ ui <- fluidPage(
         menuItem("Aggregated Commercial Data", tabName = "agg_comm_ts", icon = icon("usd",lib = "glyphicon")),
         menuItem("Species-level Commercial Data", tabName = "comm_ts", icon = icon("usd",lib = "glyphicon")),
         menuItem("Aggregated Survey Data", tabName = "agg_survey_ts", icon = icon("signal",lib = "glyphicon")),
-        
-        menuItem("Species-level Survey Data", tabName = "survey_ts", icon = icon("signal",lib = "glyphicon"))
-        
+        menuItem("Species-level Survey Data", tabName = "survey_ts", icon = icon("signal",lib = "glyphicon")),
+        menuItem("SOE Indicator Data", tabName = "soe_ts", icon = icon("signal",lib = "glyphicon"))
       )
     ),
     dashboardBody(
@@ -95,6 +94,15 @@ ui <- fluidPage(
                                                dygraphOutput("agg_comm_ts2"),
                                                dygraphOutput("agg_comm_prop2")))
                 )
+        ),
+        tabItem(tabName = "soe_ts",
+                fluidRow(column(2, selectizeInput('soe_fields', "Type to search:", choices = soe_fields,
+                                                  selected = NULL, multiple = FALSE, options = NULL)),
+                         column(11,splitLayout(cellWidths = c("50%", "50%"),
+                                               dygraphOutput("soe_ts"),
+                                               dataTableOutput("soe_summary"))
+                                )
+                )
         )
       )
       
@@ -102,12 +110,7 @@ ui <- fluidPage(
   )
 )
 
-
-
-
-
-
-server <- function(input, output) {
+server <- function(input, output, session) {
   output$var_name <- renderText({
     input$survey_fields
   })
@@ -293,6 +296,15 @@ server <- function(input, output) {
     }
   })
   
+  output$soe_ts <- renderDygraph({
+    soe_plot(dat = SOE.data.2018, var = input$soe_fields)
+  })
+  
+  output$soe_summary <- renderDT(
+    soe_plot(dat = SOE.data.2018, var = input$soe_fields, summ = T), options = list(autowidth = T)
+
+    )
+
 
 }
 
