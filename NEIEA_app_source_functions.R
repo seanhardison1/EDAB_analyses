@@ -10,9 +10,11 @@ library(Hmisc)
 
 #Load disaggregated survey biomass data. Mapped to NEIEA groupings
 load("Surv_biomass_by_species.Rdata")
-load("NEIEA_landings.Rdata")
+#load("NEIEA_landings.Rdata") #old groupings  
+load("NEIEA_comm_FI_update.Rdata") #new groupings with updated fished inverts
 load("Survey_abundance_proportions.Rdata")
 load("Comm_prop.Rdata")
+load("SOE_data_2018.Rdata")
 neiea_comm_landings <- filter(neiea_comm_landings, YEAR >1965)
 
 #GLS model selection
@@ -148,10 +150,21 @@ neiea_vis <- function(agg = NULL, dat, var, surv_season, epu, comm = F, USD = F)
   }
   
   model_df <- data.frame(time = time,series = series)
-  out <- fit_lm(dat = model_df)
   
-  #print(paste('p =', round(out$p,4)))
-  p <- out$p
+  
+  oldw <- getOption("warn")
+  options(warn = -1)
+  
+  out <- tryCatch(fit_lm(dat = model_df),
+                  error = function(e)NA)
+  
+  options(warn = oldw)
+  
+  if (any(is.na(out))){
+    p <- .99
+  } else {
+    p <- out$p
+  }
   
   if (p < 0.05){
     newtime <- seq(min(model_df$time), max(model_df$time), length.out=length(model_df$time))
@@ -225,15 +238,15 @@ neiea_vis <- function(agg = NULL, dat, var, surv_season, epu, comm = F, USD = F)
 species_summary_plot <- function(dat, var, epu, surv_season){
   dat <- dat
   
-  series <- dat %>% filter(Prop.table.comname == var,
-                         Prop.table.EPU == epu,
-                         Prop.table.season == surv_season) %>%
-                         filter (! duplicated(Prop.table.YEAR))
+  series <- dat %>% filter(comname == var,
+                         EPU == epu,
+                         season == surv_season) %>%
+                         filter (! duplicated(YEAR))
     
-  time <- series$Prop.table.YEAR
+  time <- series$YEAR
   
   model_df <- data.frame(time = time,
-                          series = series$Prop.table.proportion)
+                          series = series$prop)
   model_df <- model_df %>% filter(!is.na(series))
   out <- tryCatch(fit_lm(dat = model_df),
                   error = function(e)NA)
@@ -255,7 +268,7 @@ species_summary_plot <- function(dat, var, epu, surv_season){
     lm_pred <- rep(NA,nrow(model_df))
   }
   
-  ylab <- unique(series$Prop.table.comname)
+  ylab <- unique(series$comname)
   
   if (p < 0.05){
     model_df$lm_pred <- lm_pred
@@ -279,16 +292,14 @@ species_summary_plot <- function(dat, var, epu, surv_season){
   
 }
 
-
-
 group_summary_plot <- function(dat, epu, var, surv_season, year){
   dat <- dat
   
-  filt_dat <- dat %>% filter(Prop.table.Group == var,
-                           Prop.table.EPU == epu,
-                           Prop.table.season == surv_season,
-                           Prop.table.YEAR == year) %>%
-    arrange(desc(Prop.table.proportion))
+  filt_dat <- dat %>% filter(group == var,
+                           EPU == epu,
+                           season == surv_season,
+                           YEAR == year) %>%
+    arrange(desc(prop))
   
   p <- ggplot(data = filt_dat, aes(x = Prop.table.comname, y = Prop.table.proportion)) +
     geom_bar(stat = "identity",position = "dodge") +
@@ -297,82 +308,36 @@ group_summary_plot <- function(dat, epu, var, surv_season, year){
   ggplotly(p)
 }
 
-
-
 ts_summary_plot <- function(dat, epu, var, surv_season){
   dat <- dat
 
-  filt_dat <- dat %>% filter(Prop.table.Group == var,
-                             Prop.table.EPU == epu,
-                             Prop.table.season == surv_season) %>%
-    filter(!duplicated(Prop.table.Species.biomass))
+  filt_dat <- dat %>% filter(group == var,
+                             EPU == epu,
+                             season == surv_season) %>%
+    filter(!duplicated(kg.per.tow))
 
 
-  species <- unique(filt_dat$Prop.table.comname)
+  species <- unique(filt_dat$comname)
     
   out <- list()
   
   for (i in 1:length(species)){
-    time <- filt_dat %>% filter(Prop.table.comname == species[i]) %>% select(Prop.table.YEAR)
-    series <- filt_dat %>% filter(Prop.table.comname == species[i]) %>% select(Prop.table.proportion)
+    time <- filt_dat %>% filter(comname == species[i]) %>% select(YEAR)
+    series <- filt_dat %>% filter(comname == species[i]) %>% select(prop)
     
     out2 <- data.frame(time = time,
                       series = series)
     names(out2)[2] <- paste(as.character(species[i]))
 
-    null_df <- data.frame(Prop.table.YEAR = min(filt_dat$Prop.table.YEAR):max(filt_dat$Prop.table.YEAR),
+    null_df <- data.frame(YEAR = min(filt_dat$YEAR):max(filt_dat$YEAR),
                           series = NA)
-    out2 <- merge(out2, null_df, by = "Prop.table.YEAR", all = T)
+    out2 <- merge(out2, null_df, by = "YEAR", all = T)
     out[[i]] <- out2
   }
   oldw <- getOption("warn")
   options(warn = -1)
   
-  plot_df <- Reduce(function(...) merge(..., by="Prop.table.YEAR", all=T), out)
-  
-  options(warn = oldw)
-  
-  emptycols <- colSums(is.na(plot_df)) == nrow(plot_df)
-  plot_df <- plot_df[!emptycols]
-  
-  dygraph(plot_df) %>%
-    dyOptions(drawPoints = T, pointSize = 2) %>%
-    dyOptions(axisLineWidth = 1.5, drawGrid = FALSE) %>%
-    #dyOptions(stackedGraph = TRUE) %>%
-    dyAxis("y",valueRange = c(0,max(plot_df))) %>%
-    dyAxis("y", label =  paste(capitalize(var), "biomass contributions,",epu)) %>%
-    dyLegend(width = 600)
-}
-
-comm_summary_plot <- function(dat, epu, var){
-  
-  filt_dat <- dat %>% filter(Prop.table.Group == var,
-                             Prop.table.EPU == epu,
-                             Prop.table.season == surv_season) %>%
-    filter(!duplicated(Prop.table.Species.biomass))
-  
-  
-  species <- unique(filt_dat$Prop.table.comname)
-  
-  out <- list()
-  
-  for (i in 1:length(species)){
-    time <- filt_dat %>% filter(Prop.table.comname == species[i]) %>% select(Prop.table.YEAR)
-    series <- filt_dat %>% filter(Prop.table.comname == species[i]) %>% select(Prop.table.proportion)
-    
-    out2 <- data.frame(time = time,
-                       series = series)
-    names(out2)[2] <- paste(as.character(species[i]))
-    
-    null_df <- data.frame(Prop.table.YEAR = min(filt_dat$Prop.table.YEAR):max(filt_dat$Prop.table.YEAR),
-                          series = NA)
-    out2 <- merge(out2, null_df, by = "Prop.table.YEAR", all = T)
-    out[[i]] <- out2
-  }
-  oldw <- getOption("warn")
-  options(warn = -1)
-  
-  plot_df <- Reduce(function(...) merge(..., by="Prop.table.YEAR", all=T), out)
+  plot_df <- Reduce(function(...) merge(..., by="YEAR", all=T), out)
   
   options(warn = oldw)
   
@@ -396,16 +361,16 @@ comm_vis <- function(dat, epu, var, usd){
                                 EPU == epu) %>%
       filter (! duplicated(landingsUSD)) %>%
       group_by(EPU, YEAR) %>%
-      arrange(desc(YEAR),desc(proportionUSD))  %>%
-      top_n(n = 5, wt = proportionUSD) %>%
+      arrange(desc(YEAR),desc(propUSD))  %>%
+      top_n(n = 5, wt = propUSD) %>%
       as.data.frame()
   } else if (!usd){
     series_df <- dat %>% filter(group == var,
                                 EPU == epu) %>%
       filter (! duplicated(landingsMT)) %>%
       group_by(EPU, YEAR) %>%
-      arrange(desc(YEAR),desc(proportionMT)) %>%
-      top_n(n = 5, wt = proportionMT) %>%
+      arrange(desc(YEAR),desc(propMT)) %>%
+      top_n(n = 5, wt = propMT) %>%
       as.data.frame()
   }
   
@@ -415,9 +380,9 @@ comm_vis <- function(dat, epu, var, usd){
   for (i in 1:length(species)){
     
     if (!usd){
-      series <- series_df %>% filter(comname == species[i]) %>% select(proportionMT, YEAR) 
+      series <- series_df %>% filter(comname == species[i]) %>% select(propMT, YEAR) 
     } else {
-      series <- series_df %>% filter(comname == species[i]) %>% select(proportionUSD, YEAR) 
+      series <- series_df %>% filter(comname == species[i]) %>% select(propUSD, YEAR) 
     }
     time <- series$YEAR
     
@@ -460,6 +425,84 @@ comm_vis <- function(dat, epu, var, usd){
 }
 survey_fields <- sort(as.factor(na.omit(unique(survey_biomass$comname))))
 agg_survey_fields <- sort(as.factor(unique(survey_biomass$group)))
+soe_fields <- sort(as.factor(unique(SOE.data.2018$Var)))
+
+soe_plot <- function(dat, var, summ = F){
+  dat <- dat
+  
+  dat <- dat[dat$Var == var,]
+
+  
+  dat <- dat %>% arrange(Time)
+  series <- dat$Value
+  time <- dat$Time
+  unit <- unique(dat$Units)
+  name <- unique(dat$Var)
+  
+  model_df <- data.frame(time = time,series = series)
+  
+  
+  oldw <- getOption("warn")
+  options(warn = -1)
+  
+  out <- tryCatch(fit_lm(dat = model_df),
+                  error = function(e)NA)
+  
+  options(warn = oldw)
+  
+  if (any(is.na(out))){
+    p <- .99
+  } else {
+    p <- out$p
+  }
+  
+  if (p < 0.05 & nrow(model_df) > 20){
+    newtime <- seq(min(model_df$time), max(model_df$time), length.out=length(model_df$time))
+    newdata <- data.frame(time = newtime,
+                          time2 = newtime^2)
+    lm_pred <- AICcmodavg::predictSE(out$model, 
+                                     newdata = newdata,
+                                     se.fit = TRUE)
+    lm_pred <- lm_pred$fit
+  } else {
+    lm_pred <- rep(NA,nrow(model_df))
+  }
+  
+  dat <- cbind(model_df, lm_pred)
+  ylab  <- paste(name, ",",unit)
+  
+  if (!summ){
+    if (p < 0.05){
+      
+      dygraph(dat) %>%
+        dyOptions(drawPoints = T, pointSize = 2) %>%
+        dyAxis("y", label = ylab) %>%
+        dyOptions(axisLineWidth = 1.5, drawGrid = FALSE) %>%
+        dySeries('series', label = var) %>%
+        dySeries('lm_pred','trend', drawPoints = F) %>%
+        dyAnnotation(paste(max(model_df$time) - 5),text = paste0("p = ",round(p,4)), width = 100, height = 25)  
+    } else {
+      dat <- select(dat,-c(lm_pred))
+      dygraph(dat) %>%
+        dyOptions(drawPoints = T, pointSize = 2) %>%
+        dyAxis("y", label = ylab) %>%
+        dyOptions(axisLineWidth = 1.5, drawGrid = FALSE) %>%
+        dySeries('series', label = var)
+    }
+    
+  } else if (summ){
+    summ <- data.frame(n = nrow(model_df),
+               mean = round(mean(model_df$series),3),
+               sd = round(sd(model_df$series),3),
+               start = model_df$time[1],
+               end = model_df$time[nrow(model_df)])
+    return(summ)
+  }
+  
+  
+  
+  
+}
 
 
 #neiea_vis(agg = F, dat = survey_biomass, var = "BLUEFISH",surv_season = "fall",epu = "MAB")
