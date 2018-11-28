@@ -77,3 +77,24 @@ plt_list[[3]]$labels$title <- "Improving comms. to outside audiences?"
 
 #Arrange figures
 grid.arrange(plt_list[[1]], plt_list[[2]], plt_list[[3]], plt_list[[4]], nrow = 1)
+
+#More info
+quest.vec = c(3:5)
+d <- read.csv("EDAB Questionnaire .csv",na.strings=c("","NA"))
+d_l <- d_l <- gather(d, question, response, names(d[quest.vec[1]]):names(d[quest.vec[length(quest.vec)]]),
+                     factor_key = T)
+d_l$response <- as.character(d_l$response)
+
+#break into words and remove stop words
+dl_t <- d_l %>% unnest_tokens(word, response) %>%
+  anti_join(get_stopwords()) %>%
+  filter(!is.na(word)) %>% filter(word != "e.g.") %>%
+  filter(word != "e.g") %>% filter(word != "etc")
+
+#Find number of words per question
+dl_n <- dl_t %>% group_by(question)  %>% dplyr::summarise(word_count = n(),
+                                                         authors = length(unique(Name))) %>%
+  mutate(words_per_author = word_count/authors) %>%
+  mutate(question = c("Question 1","Question 2","Question 3"))
+
+
